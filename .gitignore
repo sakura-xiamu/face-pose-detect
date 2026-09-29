@@ -1,0 +1,12 @@
+weights/*.onnx
+weights/*.jpg
+weights/*.json
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+*.pyc
+.tmp-onnx/
+.venv/
+venv/
+.env
+.env.*

@@ -1,0 +1,14 @@
+name: face-pose
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - onnxruntime-directml>=1.19
+      - opencv-python-headless>=4.10
+      - fastapi>=0.115
+      - uvicorn>=0.32
+      - numpy>=1.26
+      - python-multipart>=0.0.12
+      - pillow>=10.4

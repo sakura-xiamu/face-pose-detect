@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>低头与转头检测</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b98a8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --success: #22c55e;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: radial-gradient(circle at top, #1e293b 0%, var(--bg) 45%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .page {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    header h1 { margin: 0; font-size: 1.6rem; font-weight: 650; }
+    header p { margin: 6px 0 0; color: var(--muted); font-size: 0.95rem; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .dot.connected { background: var(--success); box-shadow: 0 0 10px rgba(34, 197, 94, 0.6); }
+    .dot.running { background: var(--primary); box-shadow: 0 0 10px rgba(59, 130, 246, 0.6); }
+    .dot.error { background: var(--danger); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 380px minmax(0, 1fr);
+      gap: 20px;
+    }
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: rgba(26, 35, 50, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      min-width: 0;
+    }
+
+    .panel h2 { margin: 0 0 16px; font-size: 1.05rem; }
+    .panel h3 { margin: 18px 0 12px; font-size: 0.95rem; color: var(--muted); font-weight: 600; }
+
+    .results-title { cursor: pointer; user-select: none; }
+    .results-title:hover { color: var(--primary); }
+    .results-title::after { content: " ⛶"; font-size: 0.85em; color: var(--muted); }
+
+    .panel.results-fullscreen {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      margin: 0;
+      border-radius: 0;
+      overflow: auto;
+      background: var(--panel);
+    }
+    body.results-fullscreen-active { overflow: hidden; }
+
+    label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 0.85rem; }
+    .field { margin-bottom: 12px; }
+
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #111827;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
+
+    .message {
+      margin-top: 14px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      min-height: 42px;
+    }
+    .message.error {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.25);
+    }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .tab {
+      flex: 1;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .tab.active {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--text);
+      border-color: rgba(59, 130, 246, 0.45);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .metric {
+      padding: 14px;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid var(--border);
+    }
+    .metric .label { color: var(--muted); font-size: 0.8rem; margin-bottom: 6px; }
+    .metric .value { font-size: 1.15rem; font-weight: 650; }
+
+    .preview-wrap {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #0b1220;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 220px;
+    }
+    .preview-wrap canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 70vh;
+      width: auto;
+      height: auto;
+    }
+    .preview-wrap canvas[hidden] { display: none; }
+    .preview-empty { color: var(--muted); font-size: 0.95rem; padding: 96px 0; }
+
+    .flags {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .flag {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.75);
+    }
+    .flag .name { color: var(--muted); font-size: 0.82rem; margin-bottom: 6px; }
+    .flag .state { font-size: 1rem; font-weight: 650; }
+    .flag .angle { margin-top: 6px; color: var(--muted); font-size: 0.85rem; }
+    .flag.on {
+      border-color: rgba(239, 68, 68, 0.45);
+      background: rgba(239, 68, 68, 0.12);
+      animation: flag-alert-blink 0.9s ease-in-out infinite;
+    }
+    .flag.on .state { color: #fca5a5; }
+    .flag.off .state { color: var(--success); }
+
+    @keyframes flag-alert-blink {
+      0%, 100% { background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.45); }
+      50% { background: rgba(239, 68, 68, 0.38); border-color: rgba(239, 68, 68, 0.95); }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div>
+        <h1>低头与转头检测</h1>
+        <p>MobileNet V3-Small / V2，ONNX + DirectML。先初始化，再上传图片或打开摄像头。</p>
+      </div>
+      <div class="badge">
+        <span id="sseDot" class="dot"></span>
+        <span id="sseStatus">SSE 未连接</span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="panel">
+        <h2>模型配置</h2>
+        <div class="field">
+          <label for="modelName">姿态模型</label>
+          <select id="modelName">
+            <option value="mobilenetv3_small" selected>MobileNet V3-Small</option>
+            <option value="mobilenetv2">MobileNet V2</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="lowerHeadPC">低头阈值（pitch 小于该值）</label>
+          <input id="lowerHeadPC" type="number" step="1" value="-15">
+        </div>
+        <div class="field">
+          <label for="turnheadPC">转头区间（区间外视为转头）</label>
+          <input id="turnheadPC" type="text" value="-30,30">
+        </div>
+        <div class="actions">
+          <button id="initBtn" class="btn-primary" type="button">初始化模型</button>
+          <button id="releaseBtn" class="btn-danger" type="button">释放资源</button>
+        </div>
+
+        <h3>检测输入</h3>
+        <div class="tabs">
+          <button class="tab active" type="button" data-tab="fileTab">文件</button>
+          <button class="tab" type="button" data-tab="cameraTab">摄像头</button>
+        </div>
+        <div id="fileTab" class="tab-panel active">
+          <div class="field">
+            <label for="imageFile">选择图片</label>
+            <input id="imageFile" type="file" accept="image/*">
+          </div>
+          <button id="detectFileBtn" class="btn-primary" type="button">检测图片</button>
+        </div>
+        <div id="cameraTab" class="tab-panel">
+          <div class="field">
+            <label for="detectInterval">检测间隔（毫秒）</label>
+            <input id="detectInterval" type="number" min="100" step="100" value="100">
+          </div>
+          <div class="actions">
+            <button id="startCameraBtn" class="btn-primary" type="button">开启摄像头</button>
+            <button id="stopCameraBtn" class="btn-danger" type="button" disabled>停止摄像头</button>
+          </div>
+        </div>
+        <div id="actionMessage" class="message">请先初始化模型</div>
+      </aside>
+
+      <main class="panel" id="resultsPanel">
+        <h2 class="results-title" id="resultsTitle" title="点击全屏，再点或按 Esc 退出">实时结果</h2>
+        <div class="metrics">
+          <div class="metric"><div class="label">状态</div><div id="metricState" class="value">idle</div></div>
+          <div class="metric"><div class="label">已初始化</div><div id="metricInitialized" class="value">否</div></div>
+          <div class="metric"><div class="label">执行设备</div><div id="metricProvider" class="value">—</div></div>
+          <div class="metric"><div class="label">检测次数</div><div id="metricDetections" class="value">0</div></div>
+        </div>
+        <div class="preview-wrap" id="previewWrap">
+          <canvas id="previewCanvas" hidden></canvas>
+          <div id="previewEmpty" class="preview-empty">暂无预览</div>
+        </div>
+        <h2>检测结果</h2>
+        <div id="flags" class="flags"></div>
+        <video id="cameraVideo" autoplay playsinline muted hidden></video>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "/api/detect/";
+    const FLAGS = [
+      { key: "has_pitch", label: "低头", angleKey: "pitch" },
+      { key: "has_yaw", label: "转头", angleKey: "yaw" },
+    ];
+
+    const els = {
+      sseDot: document.getElementById("sseDot"),
+      sseStatus: document.getElementById("sseStatus"),
+      initBtn: document.getElementById("initBtn"),
+      releaseBtn: document.getElementById("releaseBtn"),
+      detectFileBtn: document.getElementById("detectFileBtn"),
+      startCameraBtn: document.getElementById("startCameraBtn"),
+      stopCameraBtn: document.getElementById("stopCameraBtn"),
+      actionMessage: document.getElementById("actionMessage"),
+      metricState: document.getElementById("metricState"),
+      metricInitialized: document.getElementById("metricInitialized"),
+      metricProvider: document.getElementById("metricProvider"),
+      metricDetections: document.getElementById("metricDetections"),
+      previewCanvas: document.getElementById("previewCanvas"),
+      previewEmpty: document.getElementById("previewEmpty"),
+      flags: document.getElementById("flags"),
+      cameraVideo: document.getElementById("cameraVideo"),
+      modelName: document.getElementById("modelName"),
+      imageFile: document.getElementById("imageFile"),
+    };
+
+    let eventSource = null;
+    let cameraStream = null;
+    let cameraTimer = null;
+    let cameraRunning = false;
+    let modelInitialized = false;
+    let previewSource = null;
+    let detectChain = Promise.resolve();
+
+    function apiUrl(path) {
+      return API_BASE + path;
+    }
+
+    function setMessage(text, isError = false) {
+      els.actionMessage.textContent = text;
+      els.actionMessage.classList.toggle("error", isError);
+    }
+
+    function setSseState(connected, running = false) {
+      els.sseDot.className = "dot" + (connected ? (running ? " running" : " connected") : "");
+      const provider = els.metricProvider.textContent;
+      const device = provider && provider !== "—" ? ` · ${provider}` : "";
+      els.sseStatus.textContent = connected
+        ? (running ? `检测中${device}` : `SSE 已连接${device}`)
+        : "SSE 未连接";
+    }
+
+    function currentThresholds() {
+      return {
+        lower_head_pc: document.getElementById("lowerHeadPC").value,
+        turnhead_pc: document.getElementById("turnheadPC").value.trim(),
+      };
+    }
+
+    function renderFlags(result) {
+      const data = result || {};
+      els.flags.innerHTML = FLAGS.map(({ key, label, angleKey }) => {
+        const active = !!data[key];
+        const angle = data[angleKey];
+        const angleText = angle === null || angle === undefined ? "—" : `${Number(angle).toFixed(1)}°`;
+        return `
+          <div class="flag ${active ? "on" : "off"}">
+            <div class="name">${label}</div>
+            <div class="state">${active ? "是" : "否"}</div>
+            <div class="angle">${angleKey} ${angleText}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function showCanvas() {
+      els.previewCanvas.hidden = false;
+      els.previewEmpty.hidden = true;
+    }
+
+    function clearPreview() {
+      previewSource = null;
+      els.previewCanvas.hidden = true;
+      els.previewEmpty.hidden = false;
+      const ctx = els.previewCanvas.getContext("2d");
+      ctx.clearRect(0, 0, els.previewCanvas.width, els.previewCanvas.height);
+    }
+
+    function paintFrame(source) {
+      previewSource = source;
+      const canvas = els.previewCanvas;
+      canvas.width = source.width;
+      canvas.height = source.height;
+      canvas.getContext("2d").drawImage(source, 0, 0);
+      showCanvas();
+    }
+
+    function paintBox(box) {
+      if (!previewSource) return;
+      const canvas = els.previewCanvas;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(previewSource, 0, 0);
+      if (!box) return;
+      ctx.strokeStyle = "#3b82f6";
+      ctx.lineWidth = Math.max(2, canvas.width / 240);
+      ctx.strokeRect(box[0], box[1], box[2], box[3]);
+    }
+
+    function renderStatus(status) {
+      if (!status) return;
+      modelInitialized = !!status.initialized;
+      els.modelName.disabled = modelInitialized;
+      els.metricState.textContent = status.state || "idle";
+      els.metricInitialized.textContent = modelInitialized ? "是" : "否";
+      els.metricProvider.textContent = status.provider || "—";
+      els.metricDetections.textContent = status.total_detections ?? 0;
+      renderFlags(status.latest_detection_result);
+      setSseState(!!eventSource && eventSource.readyState !== EventSource.CLOSED, cameraRunning);
+      if (status.latest_message) {
+        setMessage(status.latest_error ? `错误: ${status.latest_error}` : status.latest_message, !!status.latest_error);
+      }
+    }
+
+    function connectSse() {
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource(apiUrl("events"));
+      eventSource.onopen = () => setSseState(true, cameraRunning);
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          renderStatus(payload.status);
+        } catch (err) {
+          console.error("SSE 解析失败", err);
+        }
+      };
+      eventSource.onerror = () => setSseState(false);
+    }
+
+    async function postJson(path, body) {
+      const response = await fetch(apiUrl(path), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.detail || payload.message || response.statusText);
+      }
+      return payload;
+    }
+
+    async function detectBlob(blob) {
+      const thresholds = currentThresholds();
+      const form = new FormData();
+      form.append("file", blob, "frame.jpg");
+      form.append("lower_head_pc", thresholds.lower_head_pc);
+      form.append("turnhead_pc", thresholds.turnhead_pc);
+      const response = await fetch(apiUrl("image"), { method: "POST", body: form });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.detail || payload.message || response.statusText);
+      }
+      if (payload.result) {
+        paintBox(payload.result.face_box);
+        renderFlags(payload.result);
+      }
+      setMessage(payload.message || "检测完成", !payload.success);
+      return payload;
+    }
+
+    function enqueueDetect(task) {
+      detectChain = detectChain.then(task, task);
+      return detectChain;
+    }
+
+    async function stopCamera() {
+      cameraRunning = false;
+      if (cameraTimer) {
+        clearTimeout(cameraTimer);
+        cameraTimer = null;
+      }
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+        cameraStream = null;
+      }
+      els.cameraVideo.srcObject = null;
+      els.startCameraBtn.disabled = false;
+      els.stopCameraBtn.disabled = true;
+      setSseState(!!eventSource, false);
+    }
+
+    function captureMirroredFrame() {
+      const video = els.cameraVideo;
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0);
+      return canvas;
+    }
+
+    async function cameraLoop() {
+      if (!cameraRunning) return;
+      const interval = Math.max(100, Number(document.getElementById("detectInterval").value) || 100);
+      if (els.cameraVideo.videoWidth) {
+        const frame = captureMirroredFrame();
+        paintFrame(frame);
+        try {
+          const blob = await new Promise((resolve) => frame.toBlob(resolve, "image/jpeg", 0.92));
+          await detectBlob(blob);
+        } catch (err) {
+          setMessage(`检测失败: ${err.message || err}`, true);
+        }
+      }
+      if (cameraRunning) cameraTimer = setTimeout(cameraLoop, interval);
+    }
+
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach((item) => item.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.tab).classList.add("active");
+      });
+    });
+
+    els.initBtn.addEventListener("click", async () => {
+      setMessage("正在初始化模型...");
+      els.initBtn.disabled = true;
+      try {
+        const payload = await postJson("initialize", { model_name: els.modelName.value });
+        setMessage(payload.message || "初始化完成", !payload.success);
+      } catch (err) {
+        setMessage(`初始化失败: ${err.message || err}`, true);
+      } finally {
+        els.initBtn.disabled = false;
+      }
+    });
+
+    els.releaseBtn.addEventListener("click", async () => {
+      await stopCamera();
+      setMessage("正在释放资源...");
+      try {
+        const payload = await postJson("release");
+        setMessage(payload.message || "资源已释放", !payload.success);
+        renderFlags(null);
+      } catch (err) {
+        setMessage(`释放失败: ${err.message || err}`, true);
+      }
+    });
+
+    els.detectFileBtn.addEventListener("click", () => {
+      const file = els.imageFile.files && els.imageFile.files[0];
+      if (!file) {
+        setMessage("请先选择图片", true);
+        return;
+      }
+      if (!modelInitialized) {
+        setMessage("请先初始化模型", true);
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        URL.revokeObjectURL(url);
+        paintFrame(canvas);
+        setMessage("正在检测...");
+        enqueueDetect(async () => {
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+          await detectBlob(blob);
+        }).catch((err) => setMessage(`检测失败: ${err.message || err}`, true));
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        setMessage("图片无法显示", true);
+      };
+      image.src = url;
+    });
+
+    els.startCameraBtn.addEventListener("click", async () => {
+      if (!modelInitialized) {
+        setMessage("请先初始化模型", true);
+        return;
+      }
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        els.cameraVideo.srcObject = cameraStream;
+        await els.cameraVideo.play();
+        cameraRunning = true;
+        els.startCameraBtn.disabled = true;
+        els.stopCameraBtn.disabled = false;
+        setSseState(true, true);
+        setMessage("摄像头检测已启动");
+        cameraLoop();
+      } catch (err) {
+        setMessage(`开启摄像头失败: ${err.message || err}`, true);
+      }
+    });
+
+    els.stopCameraBtn.addEventListener("click", async () => {
+      await stopCamera();
+      setMessage("摄像头已停止");
+    });
+
+    document.getElementById("resultsTitle").addEventListener("click", () => {
+      const panel = document.getElementById("resultsPanel");
+      const on = panel.classList.toggle("results-fullscreen");
+      document.body.classList.toggle("results-fullscreen-active", on);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && document.getElementById("resultsPanel").classList.contains("results-fullscreen")) {
+        document.getElementById("resultsPanel").classList.remove("results-fullscreen");
+        document.body.classList.remove("results-fullscreen-active");
+      }
+    });
+
+    renderFlags(null);
+    connectSse();
+  </script>
+</body>
+</html>

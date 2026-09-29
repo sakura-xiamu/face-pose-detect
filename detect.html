@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 物体与人脸检测</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b98a8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --success: #22c55e;
+      --warning: #f59e0b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: radial-gradient(circle at top, #1e293b 0%, var(--bg) 45%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .page {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.6rem;
+      font-weight: 650;
+    }
+
+    header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 0.9rem;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .dot.connected { background: var(--success); box-shadow: 0 0 10px rgba(34, 197, 94, 0.6); }
+    .dot.running { background: var(--primary); box-shadow: 0 0 10px rgba(59, 130, 246, 0.6); }
+    .dot.error { background: var(--danger); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 380px minmax(0, 1fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: rgba(26, 35, 50, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      backdrop-filter: blur(8px);
+      min-width: 0;
+    }
+
+    .panel h2 {
+      margin: 0 0 16px;
+      font-size: 1.05rem;
+    }
+
+    .results-title {
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s ease;
+    }
+
+    .results-title:hover {
+      color: var(--primary);
+    }
+
+    .results-title::after {
+      content: " ⛶";
+      font-size: 0.85em;
+      color: var(--muted);
+    }
+
+    .panel.results-fullscreen {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      margin: 0;
+      border-radius: 0;
+      overflow: auto;
+      background: var(--panel);
+    }
+
+    body.results-fullscreen-active {
+      overflow: hidden;
+    }
+
+    .panel h3 {
+      margin: 18px 0 12px;
+      font-size: 0.95rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .field { margin-bottom: 12px; }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #111827;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+
+    textarea {
+      min-height: 72px;
+      resize: vertical;
+      font-family: inherit;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.15s ease, opacity 0.15s ease;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .message {
+      margin-top: 14px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      min-height: 42px;
+    }
+
+    .message.error {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.25);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .metric {
+      padding: 14px;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    .metric.hover-zoom-source {
+      opacity: 0.45;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-bottom: 6px;
+    }
+
+    .metric .value {
+      font-size: 1.15rem;
+      font-weight: 650;
+    }
+
+    .hover-zoom-layer {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%) scale(3);
+      transform-origin: center center;
+      z-index: 3000;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+
+    .hover-zoom-layer[hidden] {
+      display: none !important;
+    }
+
+    .hover-zoom-layer .metric,
+    .hover-zoom-layer .flag {
+      margin: 0;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+      cursor: default;
+      opacity: 1 !important;
+      background: rgba(15, 23, 42, 0.25) !important;
+      backdrop-filter: blur(6px);
+      border-color: rgba(45, 58, 79, 0.55);
+    }
+
+    .hover-zoom-layer .flag.on {
+      background: rgba(239, 68, 68, 0.18) !important;
+      border-color: rgba(239, 68, 68, 0.35);
+    }
+
+    .hover-zoom-layer .flag.flash-green {
+      background: rgba(34, 197, 94, 0.18) !important;
+      border-color: rgba(34, 197, 94, 0.35);
+    }
+
+    .hover-zoom-layer .flag.flash-red {
+      background: rgba(239, 68, 68, 0.18) !important;
+      border-color: rgba(239, 68, 68, 0.35);
+    }
+
+    .preview-wrap {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #0b1220;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 220px;
+    }
+
+    .preview-wrap img,
+    .preview-wrap video {
+      display: block;
+      width: auto;
+      height: auto;
+      max-width: 100%;
+      max-height: 70vh;
+      object-fit: contain;
+    }
+
+    /* display:block 会覆盖 [hidden]{display:none}，必须显式补回，否则隐藏的 img/video 仍占位显示 */
+    .preview-wrap img[hidden],
+    .preview-wrap video[hidden] {
+      display: none;
+    }
+
+    .preview-empty {
+      color: var(--muted);
+      font-size: 0.95rem;
+      padding: 96px 0;
+    }
+
+    .flags {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+
+    .flag {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.75);
+      cursor: pointer;
+    }
+
+    .flag.hover-zoom-source {
+      opacity: 0.45;
+    }
+
+    .flag .name {
+      color: var(--muted);
+      font-size: 0.82rem;
+      margin-bottom: 6px;
+    }
+
+    .flag .state {
+      font-size: 1rem;
+      font-weight: 650;
+    }
+
+    .flag.on {
+      border-color: rgba(239, 68, 68, 0.45);
+      background: rgba(239, 68, 68, 0.12);
+      animation: flag-alert-blink 0.9s ease-in-out infinite;
+    }
+
+    .flag.on .state {
+      color: #fca5a5;
+      animation: flag-text-blink 0.9s ease-in-out infinite;
+    }
+
+    .flag.off .state { color: var(--success); }
+
+    .flag.flash-green {
+      border-color: rgba(34, 197, 94, 0.45);
+      background: rgba(34, 197, 94, 0.12);
+      animation: flag-ok-blink 0.9s ease-in-out infinite;
+    }
+
+    .flag.flash-green .state {
+      color: #86efac;
+      animation: flag-ok-text-blink 0.9s ease-in-out infinite;
+    }
+
+    .flag.flash-red {
+      border-color: rgba(239, 68, 68, 0.45);
+      background: rgba(239, 68, 68, 0.12);
+      animation: flag-alert-blink 0.9s ease-in-out infinite;
+    }
+
+    .flag.flash-red .state {
+      color: #fca5a5;
+      animation: flag-text-blink 0.9s ease-in-out infinite;
+    }
+
+    @keyframes flag-alert-blink {
+      0%, 100% {
+        background: rgba(239, 68, 68, 0.12);
+        border-color: rgba(239, 68, 68, 0.45);
+        box-shadow: none;
+      }
+      50% {
+        background: rgba(239, 68, 68, 0.38);
+        border-color: rgba(239, 68, 68, 0.95);
+        box-shadow: 0 0 18px rgba(239, 68, 68, 0.55);
+      }
+    }
+
+    @keyframes flag-text-blink {
+      0%, 100% { color: #fca5a5; opacity: 1; }
+      50% { color: #fee2e2; opacity: 0.72; }
+    }
+
+    @keyframes flag-ok-blink {
+      0%, 100% {
+        background: rgba(34, 197, 94, 0.12);
+        border-color: rgba(34, 197, 94, 0.45);
+        box-shadow: none;
+      }
+      50% {
+        background: rgba(34, 197, 94, 0.38);
+        border-color: rgba(34, 197, 94, 0.95);
+        box-shadow: 0 0 18px rgba(34, 197, 94, 0.55);
+      }
+    }
+
+    @keyframes flag-ok-text-blink {
+      0%, 100% { color: #86efac; opacity: 1; }
+      50% { color: #bbf7d0; opacity: 0.72; }
+    }
+
+    .similarity-box {
+      margin-top: 8px;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.75);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .tab {
+      flex: 1;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    .tab.active {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--text);
+      border-color: rgba(59, 130, 246, 0.45);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .advanced {
+      border-top: 1px solid var(--border);
+      margin-top: 8px;
+      padding-top: 8px;
+    }
+
+    .master-camera {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #0b1220;
+      aspect-ratio: 4 / 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .master-camera video,
+    .master-camera img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .master-camera video[hidden],
+    .master-camera img[hidden] {
+      display: none;
+    }
+
+    .master-camera-empty {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .master-camera video:not([hidden]) ~ .master-camera-empty,
+    .master-camera img:not([hidden]) ~ .master-camera-empty {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div>
+        <h1>AI 物体与人脸检测</h1>
+        <p>初始化模型后上传图片、URL 或开启摄像头，检测结果通过 SSE 实时推送</p>
+      </div>
+      <div class="badge">
+        <span id="sseDot" class="dot"></span>
+        <span id="sseStatus">SSE 未连接</span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="panel">
+        <h2>模型配置</h2>
+        <form id="configForm">
+          <div class="field">
+            <label for="yoloModelName">YOLO 模型名</label>
+            <input id="yoloModelName" type="text" placeholder="留空使用远程配置">
+          </div>
+          <div class="field">
+            <label for="faceModelName">人脸模型</label>
+            <input id="faceModelName" type="text" value="buffalo_sc">
+          </div>
+          <div class="field">
+            <label for="confThres">置信度阈值</label>
+            <input id="confThres" type="number" min="0" max="1" step="0.05" value="0.3">
+          </div>
+          <div class="field">
+            <label for="iouThres">IOU 阈值</label>
+            <input id="iouThres" type="number" min="0" max="1" step="0.05" value="0.5">
+          </div>
+          <details class="advanced" id="masterFaceGroup">
+            <summary style="cursor:pointer;color:var(--muted);margin-bottom:10px;">考生人脸配置</summary>
+            <div class="field">
+              <label for="masterFaceUrl">考生人脸 URL (可选)</label>
+              <input id="masterFaceUrl" type="text" placeholder="https://...">
+            </div>
+            <div class="field">
+              <label for="masterFaceBase64">考生人脸 Base64 (可选)</label>
+              <textarea id="masterFaceBase64" placeholder="不含 data:image 前缀；也可通过下方摄像头拍照自动填充"></textarea>
+            </div>
+            <div class="field">
+              <label>摄像头拍照 (可选)</label>
+              <div class="master-camera" id="masterFaceCameraWrap">
+                <video id="masterFaceVideo" autoplay playsinline muted hidden></video>
+                <img id="masterFacePreview" alt="考生人脸预览" hidden>
+                <canvas id="masterFaceCanvas" hidden></canvas>
+                <div id="masterFaceEmpty" class="master-camera-empty">未拍照</div>
+              </div>
+              <div class="actions" style="margin-top:10px;">
+                <button id="masterFaceStartBtn" class="btn-primary" type="button">开启摄像头</button>
+                <button id="masterFaceCaptureBtn" class="btn-secondary" type="button" disabled>拍照</button>
+                <button id="masterFaceClearBtn" class="btn-danger" type="button" disabled>清除</button>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced" id="advancedThresholdGroup">
+            <summary style="cursor:pointer;color:var(--muted);margin-bottom:10px;">高级阈值配置</summary>
+            <div class="field">
+              <label for="rangeTestPC">范围检测 rangeTestPC</label>
+              <input id="rangeTestPC" type="text" value="0.2,0.2,0.1,0.1">
+            </div>
+            <div class="field">
+              <label for="lowerHeadPC">低头阈值 lowerHeadPC</label>
+              <input id="lowerHeadPC" type="number" step="1" value="-15">
+            </div>
+            <div class="field">
+              <label for="turnheadPC">转头区间 turnheadPC</label>
+              <input id="turnheadPC" type="text" value="-30,30">
+            </div>
+            <div class="field">
+              <label for="findPhonePC">手机阈值 findPhonePC</label>
+              <input id="findPhonePC" type="number" min="0" max="1" step="0.05" value="0.6">
+            </div>
+            <div class="field">
+              <label for="findBookPC">书籍阈值 findBookPC</label>
+              <input id="findBookPC" type="number" min="0" max="1" step="0.05" value="0.6">
+            </div>
+            <div class="field">
+              <label for="multiplePersonPC">多人阈值 multiplePersonPC</label>
+              <input id="multiplePersonPC" type="number" min="0" max="1" step="0.05" value="0.6">
+            </div>
+            <div class="field">
+              <label for="nobodyPC">无人阈值 nobodyPC</label>
+              <input id="nobodyPC" type="number" min="0" max="1" step="0.05" value="0.3">
+            </div>
+            <div class="field">
+              <label for="changePersonPC">换人阈值 changePersonPC</label>
+              <input id="changePersonPC" type="text" value="0.7,0.4">
+            </div>
+          </details>
+        </form>
+
+        <div class="actions">
+          <button id="initBtn" class="btn-primary" type="button">初始化模型</button>
+          <button id="releaseBtn" class="btn-danger" type="button">释放资源</button>
+        </div>
+
+        <h3>检测输入</h3>
+        <div class="tabs">
+          <button class="tab active" type="button" data-tab="fileTab">文件</button>
+          <button class="tab" type="button" data-tab="urlTab">URL</button>
+          <button class="tab" type="button" data-tab="cameraTab">摄像头</button>
+          <button class="tab" type="button" data-tab="similarityTab">相似度</button>
+        </div>
+
+        <div id="fileTab" class="tab-panel active">
+          <div class="field">
+            <label for="imageFile">选择图片</label>
+            <input id="imageFile" type="file" accept="image/*">
+          </div>
+          <div class="actions">
+            <button id="detectFileBtn" class="btn-primary" type="button">检测图片</button>
+          </div>
+        </div>
+
+        <div id="urlTab" class="tab-panel">
+          <div class="field">
+            <label for="imageUrl">图片 URL</label>
+            <input id="imageUrl" type="url" placeholder="https://example.com/image.jpg">
+          </div>
+          <div class="actions">
+            <button id="detectUrlBtn" class="btn-primary" type="button">检测 URL</button>
+          </div>
+        </div>
+
+        <div id="cameraTab" class="tab-panel">
+          <div class="field">
+            <label for="detectInterval">检测间隔 (毫秒)</label>
+            <input id="detectInterval" type="number" min="100" step="100" value="100">
+          </div>
+          <div class="actions">
+            <button id="startCameraBtn" class="btn-primary" type="button">开启摄像头</button>
+            <button id="stopCameraBtn" class="btn-danger" type="button" disabled>停止摄像头</button>
+          </div>
+        </div>
+
+        <div id="similarityTab" class="tab-panel">
+          <div class="field">
+            <label for="similarityFile">选择图片</label>
+            <input id="similarityFile" type="file" accept="image/*">
+          </div>
+          <div class="field">
+            <label for="checkType">检测类型 check_type</label>
+            <input id="checkType" type="number" step="1" placeholder="可选">
+          </div>
+          <div class="actions">
+            <button id="similarityBtn" class="btn-primary" type="button">检测相似度</button>
+          </div>
+        </div>
+
+        <div id="actionMessage" class="message">请先初始化模型</div>
+      </aside>
+
+      <main class="panel" id="resultsPanel">
+        <h2 class="results-title" id="resultsTitle" title="点击全屏，再点或按 Esc 退出">实时结果</h2>
+
+        <div class="metrics">
+          <div class="metric">
+            <div class="label">服务状态</div>
+            <div id="metricState" class="value">idle</div>
+          </div>
+          <div class="metric">
+            <div class="label">模型已初始化</div>
+            <div id="metricInitialized" class="value">否</div>
+          </div>
+          <div class="metric">
+            <div class="label">检测次数</div>
+            <div id="metricDetections" class="value">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">相似度检测次数</div>
+            <div id="metricSimilarityChecks" class="value">0</div>
+          </div>
+        </div>
+
+        <div class="preview-wrap">
+          <img id="previewImage" alt="预览图" hidden>
+          <video id="previewVideo" autoplay playsinline muted hidden></video>
+          <canvas id="captureCanvas" hidden></canvas>
+          <div id="previewEmpty" class="preview-empty">暂无预览</div>
+        </div>
+
+        <h2>检测结果</h2>
+        <div id="flags" class="flags"></div>
+
+        <h2>相似度结果</h2>
+        <div id="similarityBox" class="similarity-box">
+          <div class="label">尚未执行相似度检测</div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div id="hoverZoomLayer" class="hover-zoom-layer" hidden></div>
+
+  <script>
+    const SSE_BASE = new URL(".", window.location.href);
+    const API_BASE = new URL("/api/detect/", window.location.origin);
+
+    const DETECTION_FLAGS = [
+      { key: "touch_event", label: "识别到事件", alertOn: true, flashMode: "inverse" },
+      { key: "not_person", label: "无人", alertOn: true },
+      { key: "multi_person", label: "多人", alertOn: true },
+      { key: "has_book", label: "有书籍", alertOn: true },
+      { key: "has_phone", label: "有手机", alertOn: true },
+      { key: "has_pitch", label: "低头", alertOn: true },
+      { key: "has_yaw", label: "转头", alertOn: true },
+      { key: "has_change_face", label: "换人", alertOn: true },
+      { key: "has_face_low_quality", label: "人脸低质量", alertOn: true },
+      { key: "has_out_bounds", label: "超出范围", alertOn: true },
+    ];
+
+    const els = {
+      sseDot: document.getElementById("sseDot"),
+      sseStatus: document.getElementById("sseStatus"),
+      initBtn: document.getElementById("initBtn"),
+      releaseBtn: document.getElementById("releaseBtn"),
+      detectFileBtn: document.getElementById("detectFileBtn"),
+      detectUrlBtn: document.getElementById("detectUrlBtn"),
+      startCameraBtn: document.getElementById("startCameraBtn"),
+      stopCameraBtn: document.getElementById("stopCameraBtn"),
+      similarityBtn: document.getElementById("similarityBtn"),
+      actionMessage: document.getElementById("actionMessage"),
+      metricState: document.getElementById("metricState"),
+      metricInitialized: document.getElementById("metricInitialized"),
+      metricDetections: document.getElementById("metricDetections"),
+      metricSimilarityChecks: document.getElementById("metricSimilarityChecks"),
+      previewImage: document.getElementById("previewImage"),
+      previewVideo: document.getElementById("previewVideo"),
+      previewEmpty: document.getElementById("previewEmpty"),
+      captureCanvas: document.getElementById("captureCanvas"),
+      flags: document.getElementById("flags"),
+      similarityBox: document.getElementById("similarityBox"),
+      imageFile: document.getElementById("imageFile"),
+      imageUrl: document.getElementById("imageUrl"),
+      similarityFile: document.getElementById("similarityFile"),
+      masterFaceBase64: document.getElementById("masterFaceBase64"),
+      masterFaceVideo: document.getElementById("masterFaceVideo"),
+      masterFacePreview: document.getElementById("masterFacePreview"),
+      masterFaceCanvas: document.getElementById("masterFaceCanvas"),
+      masterFaceCameraWrap: document.getElementById("masterFaceCameraWrap"),
+      masterFaceEmpty: document.getElementById("masterFaceEmpty"),
+      masterFaceStartBtn: document.getElementById("masterFaceStartBtn"),
+      masterFaceCaptureBtn: document.getElementById("masterFaceCaptureBtn"),
+      masterFaceClearBtn: document.getElementById("masterFaceClearBtn"),
+    };
+
+    let eventSource = null;
+    let cameraStream = null;
+    let cameraTimer = null;
+    let cameraRunning = false;
+    let masterCameraStream = null;
+    let modelInitialized = false;
+
+    function sseUrl(path) {
+      return new URL(path, SSE_BASE).toString();
+    }
+
+    function apiUrl(path) {
+      return new URL(path, API_BASE).toString();
+    }
+
+    function setMessage(text, isError = false) {
+      els.actionMessage.textContent = text;
+      els.actionMessage.classList.toggle("error", isError);
+    }
+
+    function setSseState(connected, running = false) {
+      els.sseDot.className = "dot";
+      if (connected) {
+        els.sseDot.classList.add(running ? "running" : "connected");
+        els.sseStatus.textContent = running ? "SSE 已连接 · 检测中" : "SSE 已连接";
+      } else {
+        els.sseStatus.textContent = "SSE 未连接";
+      }
+    }
+
+    function boolText(value) {
+      return value ? "是" : "否";
+    }
+
+    function renderFlags(result) {
+      if (!result) {
+        els.flags.innerHTML = '<div class="preview-empty">暂无检测结果</div>';
+        return;
+      }
+
+      if (!els.flags.querySelector(".flag")) {
+        els.flags.innerHTML = DETECTION_FLAGS.map(({ key, label }) => `
+          <div class="flag off" data-key="${key}">
+            <div class="name">${label}</div>
+            <div class="state">否</div>
+          </div>
+        `).join("");
+      }
+
+      DETECTION_FLAGS.forEach(({ key, alertOn, flashMode }) => {
+        const flagEl = els.flags.querySelector(`.flag[data-key="${key}"]`);
+        if (!flagEl) return;
+
+        const active = !!result[key];
+        flagEl.classList.remove("on", "off", "flash-green", "flash-red");
+        flagEl.querySelector(".state").textContent = boolText(active);
+
+        if (flashMode === "inverse") {
+          // 反向：识别到闪绿，未识别到闪红
+          flagEl.classList.add(active ? "flash-green" : "flash-red");
+        } else {
+          const showAlert = alertOn && active;
+          flagEl.classList.add(showAlert ? "on" : "off");
+        }
+      });
+    }
+
+    function renderSimilarity(result) {
+      if (!result) {
+        els.similarityBox.innerHTML = '<div class="label">尚未执行相似度检测</div>';
+        return;
+      }
+
+      const statusText = result.similarity_status ? "不相似" : "相似";
+      const score = Number(result.similarity_score ?? 0).toFixed(4);
+      els.similarityBox.innerHTML = `
+        <div class="label">相似状态</div>
+        <div class="value" style="font-size:1.1rem;font-weight:650;margin-bottom:8px;">${statusText}</div>
+        <div class="label">相似度得分</div>
+        <div class="value" style="font-size:1.1rem;font-weight:650;">${score}</div>
+      `;
+    }
+
+    function showImagePreview(source) {
+      els.previewVideo.hidden = true;
+      els.previewEmpty.hidden = true;
+      els.previewImage.hidden = false;
+      els.previewImage.src = source;
+    }
+
+    function showVideoPreview() {
+      els.previewImage.hidden = true;
+      els.previewEmpty.hidden = true;
+      els.previewVideo.hidden = false;
+    }
+
+    function clearPreview() {
+      els.previewImage.hidden = true;
+      els.previewVideo.hidden = true;
+      els.previewEmpty.hidden = false;
+      els.previewImage.removeAttribute("src");
+    }
+
+    function renderStatus(status) {
+      if (!status) return;
+
+      modelInitialized = !!status.initialized;
+      const running = cameraRunning || status.state === "detecting";
+      setSseState(!!eventSource, running);
+
+      els.metricState.textContent = status.state || "idle";
+      els.metricInitialized.textContent = modelInitialized ? "是" : "否";
+      els.metricDetections.textContent = status.total_detections ?? 0;
+      els.metricSimilarityChecks.textContent = status.total_similarity_checks ?? 0;
+
+      renderFlags(status.latest_detection_result);
+      renderSimilarity(status.latest_similarity_result);
+
+      if (status.latest_message) {
+        const isError = !!status.latest_error || status.state === "error";
+        if (!isError || status.latest_error) {
+          setMessage(
+            status.latest_error ? `错误: ${status.latest_error}` : status.latest_message,
+            isError
+          );
+        }
+      }
+    }
+
+    function connectSse() {
+      if (eventSource) {
+        eventSource.close();
+      }
+
+      eventSource = new EventSource(sseUrl("events"));
+      eventSource.onopen = () => setSseState(true, cameraRunning);
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          renderStatus(payload.status);
+        } catch (err) {
+          console.error("SSE 解析失败", err);
+        }
+      };
+      eventSource.onerror = () => setSseState(false);
+    }
+
+    function collectModelConfig() {
+      const config = {
+        conf_thres: Number(document.getElementById("confThres").value),
+        iou_thres: Number(document.getElementById("iouThres").value),
+        face_model_name: document.getElementById("faceModelName").value || "buffalo_sc",
+        ai_config: {
+          rangeTestPC: document.getElementById("rangeTestPC").value,
+          lowerHeadPC: Number(document.getElementById("lowerHeadPC").value),
+          turnheadPC: document.getElementById("turnheadPC").value,
+          findPhonePC: Number(document.getElementById("findPhonePC").value),
+          findBookPC: Number(document.getElementById("findBookPC").value),
+          multiplePersonPC: Number(document.getElementById("multiplePersonPC").value),
+          nobodyPC: Number(document.getElementById("nobodyPC").value),
+          changePersonPC: document.getElementById("changePersonPC").value,
+        },
+      };
+
+      const yoloModelName = document.getElementById("yoloModelName").value.trim();
+      const masterFaceUrl = document.getElementById("masterFaceUrl").value.trim();
+      const masterFaceBase64 = document.getElementById("masterFaceBase64").value.trim();
+
+      if (yoloModelName) config.yolo_model_name = yoloModelName;
+      if (masterFaceUrl) config.master_face_url = masterFaceUrl;
+      if (masterFaceBase64) config.master_face_base64 = masterFaceBase64;
+
+      return config;
+    }
+
+    async function postJson(path, body) {
+      const response = await fetch(apiUrl(path), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}),
+      });
+      return response.json();
+    }
+
+    async function refreshStatus() {
+      try {
+        const response = await fetch(apiUrl("status"));
+        const payload = await response.json();
+        renderStatus(payload.status);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function readFileAsBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = String(reader.result || "");
+          const base64 = result.includes(",") ? result.split(",")[1] : result;
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function captureVideoFrameBase64() {
+      const video = els.previewVideo;
+      const canvas = els.captureCanvas;
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      return dataUrl.split(",")[1];
+    }
+
+    function updateMasterFacePreview() {
+      const hasVideo = !els.masterFaceVideo.hidden;
+      const hasPreview = !els.masterFacePreview.hidden;
+      els.masterFaceEmpty.hidden = hasVideo || hasPreview;
+    }
+
+    async function stopMasterFaceCamera() {
+      if (masterCameraStream) {
+        masterCameraStream.getTracks().forEach((track) => track.stop());
+        masterCameraStream = null;
+      }
+      els.masterFaceVideo.srcObject = null;
+      els.masterFaceVideo.hidden = true;
+      els.masterFaceStartBtn.disabled = false;
+      els.masterFaceCaptureBtn.disabled = true;
+      updateMasterFacePreview();
+    }
+
+    async function startMasterFaceCamera() {
+      try {
+        masterCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        els.masterFaceVideo.srcObject = masterCameraStream;
+        els.masterFaceVideo.hidden = false;
+        els.masterFaceStartBtn.disabled = true;
+        els.masterFaceCaptureBtn.disabled = false;
+        updateMasterFacePreview();
+      } catch (err) {
+        setMessage(`开启考生人脸摄像头失败: ${err}`, true);
+      }
+    }
+
+    function captureMasterFace() {
+      const video = els.masterFaceVideo;
+      if (!video.videoWidth) {
+        setMessage("摄像头尚未就绪，请稍后再试", true);
+        return;
+      }
+      const canvas = els.masterFaceCanvas;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const base64 = canvas.toDataURL("image/jpeg", 0.9).split(",")[1];
+      els.masterFaceBase64.value = base64;
+      els.masterFacePreview.src = `data:image/jpeg;base64,${base64}`;
+      els.masterFacePreview.hidden = false;
+      els.masterFaceClearBtn.disabled = false;
+      stopMasterFaceCamera();
+      updateMasterFacePreview();
+      setMessage("已采集考生人脸照片");
+    }
+
+    async function clearMasterFace() {
+      els.masterFaceBase64.value = "";
+      els.masterFacePreview.src = "";
+      els.masterFacePreview.hidden = true;
+      els.masterFaceClearBtn.disabled = true;
+      await stopMasterFaceCamera();
+      updateMasterFacePreview();
+    }
+
+    async function detectBase64(base64, previewSource) {
+      if (!modelInitialized) {
+        setMessage("请先初始化模型", true);
+        return;
+      }
+      if (previewSource) {
+        showImagePreview(previewSource);
+      }
+      setMessage("正在检测...");
+      try {
+        const payload = await postJson("base64", { image_data: base64 });
+        setMessage(payload.message || "检测完成", !payload.success);
+      } catch (err) {
+        setMessage(`检测失败: ${err}`, true);
+      }
+    }
+
+    async function stopCamera() {
+      cameraRunning = false;
+      if (cameraTimer) {
+        clearInterval(cameraTimer);
+        cameraTimer = null;
+      }
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+        cameraStream = null;
+      }
+      els.previewVideo.srcObject = null;
+      els.startCameraBtn.disabled = false;
+      els.stopCameraBtn.disabled = true;
+      clearPreview();
+      setSseState(!!eventSource, false);
+    }
+
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach((item) => item.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.tab).classList.add("active");
+      });
+    });
+
+    els.initBtn.addEventListener("click", async () => {
+      setMessage("正在初始化模型...");
+      els.initBtn.disabled = true;
+      try {
+        const payload = await postJson("initialize", collectModelConfig());
+        setMessage(payload.message || "初始化完成", !payload.success);
+        await refreshStatus();
+      } catch (err) {
+        setMessage(`初始化失败: ${err}`, true);
+      } finally {
+        els.initBtn.disabled = false;
+      }
+    });
+
+    els.releaseBtn.addEventListener("click", async () => {
+      await stopCamera();
+      await stopMasterFaceCamera();
+      setMessage("正在释放资源...");
+      try {
+        const payload = await postJson("release");
+        setMessage(payload.message || "资源已释放", !payload.success);
+        await refreshStatus();
+      } catch (err) {
+        setMessage(`释放失败: ${err}`, true);
+      }
+    });
+
+    els.detectFileBtn.addEventListener("click", async () => {
+      const file = els.imageFile.files && els.imageFile.files[0];
+      if (!file) {
+        setMessage("请先选择图片", true);
+        return;
+      }
+      const previewUrl = URL.createObjectURL(file);
+      showImagePreview(previewUrl);
+      setMessage("正在检测...");
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch(apiUrl("image"), { method: "POST", body: formData });
+        const payload = await response.json();
+        setMessage(payload.message || "检测完成", !payload.success);
+      } catch (err) {
+        setMessage(`检测失败: ${err}`, true);
+      }
+    });
+
+    els.detectUrlBtn.addEventListener("click", async () => {
+      const imageUrl = els.imageUrl.value.trim();
+      if (!imageUrl) {
+        setMessage("请输入图片 URL", true);
+        return;
+      }
+      showImagePreview(imageUrl);
+      setMessage("正在检测...");
+      try {
+        const payload = await postJson("url", { image_url: imageUrl });
+        setMessage(payload.message || "检测完成", !payload.success);
+      } catch (err) {
+        setMessage(`检测失败: ${err}`, true);
+      }
+    });
+
+    els.startCameraBtn.addEventListener("click", async () => {
+      if (!modelInitialized) {
+        setMessage("请先初始化模型", true);
+        return;
+      }
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        els.previewVideo.srcObject = cameraStream;
+        showVideoPreview();
+        cameraRunning = true;
+        els.startCameraBtn.disabled = true;
+        els.stopCameraBtn.disabled = false;
+        setSseState(!!eventSource, true);
+
+        const interval = Math.max(100, Number(document.getElementById("detectInterval").value) || 100);
+        const runDetect = async () => {
+          if (!cameraRunning || !els.previewVideo.videoWidth) return;
+          const base64 = captureVideoFrameBase64();
+          await detectBase64(base64);
+        };
+
+        await runDetect();
+        cameraTimer = setInterval(runDetect, interval);
+        setMessage("摄像头检测已启动");
+      } catch (err) {
+        setMessage(`开启摄像头失败: ${err}`, true);
+      }
+    });
+
+    els.stopCameraBtn.addEventListener("click", async () => {
+      await stopCamera();
+      setMessage("摄像头已停止");
+    });
+
+    els.similarityBtn.addEventListener("click", async () => {
+      const file = els.similarityFile.files && els.similarityFile.files[0];
+      if (!file) {
+        setMessage("请先选择图片", true);
+        return;
+      }
+      setMessage("正在检测相似度...");
+      try {
+        const imageData = await readFileAsBase64(file);
+        const body = { image_data: imageData };
+        const checkTypeValue = document.getElementById("checkType").value.trim();
+        if (checkTypeValue !== "") {
+          body.check_type = Number(checkTypeValue);
+        }
+        const payload = await postJson("similarity", body);
+        setMessage(payload.message || "相似度检测完成", !payload.success);
+      } catch (err) {
+        setMessage(`相似度检测失败: ${err}`, true);
+      }
+    });
+
+    els.masterFaceStartBtn.addEventListener("click", startMasterFaceCamera);
+    els.masterFaceCaptureBtn.addEventListener("click", captureMasterFace);
+    els.masterFaceClearBtn.addEventListener("click", clearMasterFace);
+
+    function toggleResultsFullscreen() {
+      const panel = document.getElementById("resultsPanel");
+      if (!panel) return;
+      const on = panel.classList.toggle("results-fullscreen");
+      document.body.classList.toggle("results-fullscreen-active", on);
+    }
+
+    document.getElementById("resultsTitle")?.addEventListener("click", toggleResultsFullscreen);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && document.getElementById("resultsPanel")?.classList.contains("results-fullscreen")) {
+        toggleResultsFullscreen();
+      }
+    });
+
+    function initCenterHoverZoom(itemSelector) {
+      const layer = document.getElementById("hoverZoomLayer");
+      if (!layer) return;
+      let source = null;
+      let observer = null;
+
+      function renderClone() {
+        if (!source || !document.contains(source)) {
+          hideZoom();
+          return;
+        }
+        layer.innerHTML = "";
+        const clone = source.cloneNode(true);
+        clone.classList.remove("hover-zoom-source");
+        clone.style.width = `${source.getBoundingClientRect().width}px`;
+        layer.appendChild(clone);
+        layer.hidden = false;
+      }
+
+      function hideZoom() {
+        if (observer) {
+          observer.disconnect();
+          observer = null;
+        }
+        if (source) source.classList.remove("hover-zoom-source");
+        source = null;
+        layer.hidden = true;
+        layer.innerHTML = "";
+      }
+
+      function showZoom(el) {
+        if (source === el) return;
+        hideZoom();
+        source = el;
+        el.classList.add("hover-zoom-source");
+        renderClone();
+        observer = new MutationObserver(renderClone);
+        observer.observe(el, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+          attributes: true,
+        });
+      }
+
+      document.addEventListener("mouseover", (e) => {
+        const el = e.target.closest(itemSelector);
+        if (!el || layer.contains(el)) return;
+        showZoom(el);
+      });
+
+      document.addEventListener("mouseout", (e) => {
+        if (!source) return;
+        const related = e.relatedTarget;
+        if (related && source.contains(related)) return;
+        const next = related && related.closest ? related.closest(itemSelector) : null;
+        if (next === source) return;
+        if (next) showZoom(next);
+        else hideZoom();
+      });
+    }
+
+    initCenterHoverZoom(".metric, .flag");
+
+    renderFlags(null);
+    connectSse();
+    refreshStatus();
+  </script>
+</body>
+</html>

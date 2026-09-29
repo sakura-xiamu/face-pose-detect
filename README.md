@@ -51,13 +51,13 @@ conda env create -f environment.yml
 conda activate face-pose
 ```
 
-模型权重不在仓库里。放到 `weights/`：
+模型已包含在 `weights/`：
 
 - `face_detection_yunet_2023mar.onnx`
 - `mobilenetv3_small.onnx`
 - `mobilenetv2.onnx`
 
-缺少对应文件时，初始化接口会返回 400，并说明缺的是哪一个模型。
+克隆仓库后可直接初始化。若文件被删掉，初始化接口会返回 400，并说明缺的是哪一个模型。
 
 ## 启动
 
@@ -140,7 +140,7 @@ app/
 static/index.html    检测页面
 tests/test_geometry.py
 environment.yml
-weights/             本地模型，不提交
+weights/             YuNet 与 MobileNet ONNX
 ```
 
 根目录的 `detect.html` 是同一套接口的另一份页面，服务实际挂载的是 `static/index.html`。
